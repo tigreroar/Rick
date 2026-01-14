@@ -8,49 +8,46 @@ from duckduckgo_search import DDGS
 from datetime import date
 import re
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="Listing Powerhouse AI (Rick Logic)", page_icon="🧠", layout="wide")
+# --- CONFIGURACIÓN ESTÁNDAR ---
+st.set_page_config(page_title="Listing Powerhouse AI (Rick)", page_icon="🧠", layout="wide")
 
-# --- 1. INTERNET SEARCH (THE "AVM" CHECK) ---
+# --- 1. MOTOR DE BÚSQUEDA (INTELIGENCIA EXTERNA) ---
 def get_web_estimates(address):
-    """Searches for Zestimates/Redfin values to triangulate price."""
+    """Busca en Zillow/Redfin para tener el contexto externo."""
     search_query = f"{address} price estimate zillow redfin realtor"
     results_text = ""
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(search_query, max_results=5))
             for r in results:
-                results_text += f"SOURCE: {r['title']}\nTEXT: {r['body']}\n\n"
+                results_text += f"SOURCE: {r['title']}\nSUMMARY: {r['body']}\n\n"
         
         if not results_text:
-            return "WARNING: Web search blocked. AI will rely on Market Averages."
+            return "WARNING: Web search blocked. AI will rely only on MLS Data."
         return results_text
     except Exception as e:
         return f"Search Error: {e}"
 
-# --- 2. PDF GENERATION ---
+# --- 2. MOTOR DE REPORTES (PDF) ---
 class PDFReport(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 12)
         self.cell(0, 10, 'Listing Powerhouse Strategy Report', 0, 1, 'C')
         self.ln(5)
-
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
     def chapter_title(self, title):
         self.set_font('Arial', 'B', 12)
         self.set_fill_color(200, 220, 255)
         self.cell(0, 10, title, 0, 1, 'L', 1)
         self.ln(4)
 
-def create_pdf(content, agent_name, address, metrics, web_summary, ai_price_recommendation):
+def create_pdf(content, agent_name, address, metrics, web_summary, ai_price):
     pdf = PDFReport()
     pdf.add_page()
-    
-    # COVER
+    # PORTADA
     pdf.set_font('Arial', 'B', 24)
     pdf.ln(40)
     pdf.cell(0, 10, "Strategic Listing Plan", 0, 1, 'C')
@@ -63,36 +60,36 @@ def create_pdf(content, agent_name, address, metrics, web_summary, ai_price_reco
     pdf.set_font('Arial', 'I', 14)
     pdf.cell(0, 10, f"Prepared by: {agent_name}", 0, 1, 'C')
     
-    # METRICS DASHBOARD
+    # DASHBOARD
     pdf.add_page()
     pdf.chapter_title("Strategic Pricing Analysis")
     pdf.set_font('Arial', '', 11)
     
-    # THE RICK LOGIC DISPLAY
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, f"AGENT'S RECOMMENDED PRICE: {ai_price_recommendation}", 0, 1)
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 15, f"RECOMMENDED TARGET PRICE: {ai_price}", 0, 1)
     pdf.set_font('Arial', '', 11)
     
     if isinstance(metrics, dict):
-        pdf.ln(5)
         pdf.cell(0, 10, "Market Conditions (The 'Why'):", 0, 1)
-        pdf.cell(0, 10, f"- Absorption Rate (MOI): {metrics['months_inventory']} Months", 0, 1)
-        pdf.cell(0, 10, f"- Success Probability: {metrics['success_ratio']}%", 0, 1)
-        pdf.cell(0, 10, f"- Neighborhood Avg Price: {metrics['avg_sold_price']}", 0, 1)
-    
+        pdf.cell(0, 8, f"- Inventory Speed (MOI): {metrics['months_inventory']} Months", 0, 1)
+        pdf.cell(0, 8, f"- Probability of Selling: {metrics['success_ratio']}%", 0, 1)
+        pdf.cell(0, 8, f"- Neighborhood Avg: {metrics['avg_sold_price']}", 0, 1)
+        if metrics.get('subject_price_found') != "N/A":
+             pdf.set_font('Arial', 'B', 11)
+             pdf.cell(0, 8, f"- Subject Property (List) Price found in CSV: {metrics['subject_price_found']}", 0, 1)
+             pdf.set_font('Arial', '', 11)
+
     pdf.ln(5)
     pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 10, "Online Intelligence (AVM Context):", 0, 1)
     pdf.set_font('Arial', '', 10)
-    
     clean_web = web_summary.encode('latin-1', 'replace').decode('latin-1')
     pdf.multi_cell(0, 6, clean_web)
     pdf.ln(10)
     
-    # REPORT CONTENT
+    # CONTENIDO
     pdf.chapter_title("Strategic Execution Plan")
     pdf.set_font('Arial', '', 11)
-    
     lines = content.split('\n')
     for line in lines:
         clean_line = line.encode('latin-1', 'replace').decode('latin-1')
@@ -102,14 +99,12 @@ def create_pdf(content, agent_name, address, metrics, web_summary, ai_price_reco
             pdf.set_font('Arial', '', 11)
         else:
             pdf.multi_cell(0, 6, clean_line.replace('*', ''))
-            
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. KNOWLEDGE & DATA ---
+# --- 3. LECTURA DE DATOS (ESTO ES LO QUE NO DEBES TOCAR) ---
 def load_knowledge_base():
-    """Reads 'The Buyer Profiler' and 'AVM Guide' from folder."""
     text = ""
-    path = "knowledge_base"
+    path = "conocimiento"
     if not os.path.exists(path): return ""
     for f in os.listdir(path):
         try:
@@ -124,25 +119,41 @@ def load_knowledge_base():
         except: pass
     return text
 
-def calculate_metrics(df, months=6):
+def calculate_metrics(df, months=6, address_query=""):
     """
-    Calculates pure market stats. Does NOT try to find the subject property price anymore.
-    We leave the pricing strategy to the AI.
+    1. Limpia el CSV.
+    2. Calcula métricas (MOI, Success Ratio).
+    3. Busca el precio de la casa sujeto SI existe en el CSV.
     """
     try:
         df.columns = [c.lower().strip() for c in df.columns]
         
+        # A. Encontrar Columna Status
         status_col = next((c for c in df.columns if 'status' in c), None)
-        if not status_col: return "ERROR: 'Status' column missing."
+        if not status_col: return "ERROR: No se encontró columna 'Status'."
 
-        excluded_words = ['date', 'agent', 'office', 'code', 'phone', 'zip', 'id']
-        possible_price_cols = [c for c in df.columns if ('price' in c or 'list' in c or 'sold' in c) and not any(x in c for x in excluded_words)]
-        price_col = next((c for c in possible_price_cols if 'sold' in c or 'closed' in c), possible_price_cols[0] if possible_price_cols else None)
+        # B. Encontrar Columna Precio (Ignorando Fechas)
+        excluded = ['date', 'agent', 'office', 'code', 'phone', 'zip', 'id']
+        price_cols = [c for c in df.columns if ('price' in c or 'list' in c or 'sold' in c) and not any(x in c for x in excluded)]
+        # Preferimos precio de lista actual o precio vendido
+        price_col = next((c for c in price_cols if 'list' in c), price_cols[0] if price_cols else None)
         
-        status_series = df[status_col].astype(str)
-        sold = df[status_series.str.contains('sold|closed', case=False, na=False)].shape[0]
-        active = df[status_series.str.contains('active|avail', case=False, na=False)].shape[0]
-        failed = df[status_series.str.contains('exp|with|canc|term', case=False, na=False)].shape[0]
+        # C. Lógica de Búsqueda de Propiedad Sujeto
+        subject_price_found = "N/A"
+        if address_query and price_col:
+            # Buscamos en todas las columnas de texto la coincidencia (ej: "9012 Goshen")
+            # Esto une todas las columnas en una sola linea de texto por fila para buscar
+            df['search_index'] = df.astype(str).agg(' '.join, axis=1)
+            match = df[df['search_index'].str.contains(address_query, case=False, na=False)]
+            if not match.empty:
+                raw = str(match.iloc[0][price_col])
+                subject_price_found = raw # ej: $870,000
+
+        # D. Cálculos Matemáticos
+        status = df[status_col].astype(str)
+        sold = df[status.str.contains('sold|closed', case=False, na=False)].shape[0]
+        active = df[status.str.contains('active|avail', case=False, na=False)].shape[0]
+        failed = df[status.str.contains('exp|with|canc|term', case=False, na=False)].shape[0]
         
         sales_pm = sold / months
         moi = (active / sales_pm) if sales_pm > 0 else 99.9
@@ -151,120 +162,123 @@ def calculate_metrics(df, months=6):
         
         avg_price = 0
         if price_col:
-            clean_prices = df[status_series.str.contains('sold|closed', case=False, na=False)][price_col].astype(str).str.replace(r'[$,]', '', regex=True)
-            avg_price = pd.to_numeric(clean_prices, errors='coerce').mean()
+            # Limpieza de $ y , para calcular promedio
+            clean_p = df[status.str.contains('sold|closed', case=False, na=False)][price_col].astype(str).str.replace(r'[$,]', '', regex=True)
+            avg_price = pd.to_numeric(clean_p, errors='coerce').mean()
 
         return {
             "months_inventory": round(moi, 2),
             "success_ratio": round(success, 1),
             "avg_sold_price": f"${avg_price:,.0f}" if avg_price > 0 else "N/A",
-            "failed": failed
+            "failed": failed,
+            "subject_price_found": subject_price_found
         }
     except Exception as e:
-        return f"Calc Error: {str(e)}"
+        return f"Error de Cálculo: {str(e)}"
 
-# --- 4. INTERFACE ---
+# --- 4. INTERFAZ (FRONTEND) ---
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header("⚙️ Configuración")
     env_key = os.getenv("GOOGLE_API_KEY")
     api_key = env_key if env_key else st.text_input("🔑 API Key", type="password")
     st.divider()
-    agent_name = st.text_input("Agent Name", value="Fernando Herboso")
-    uploaded_file = st.file_uploader("Upload MLS CSV", type=["csv"])
-    months_analyzed = st.number_input("Months Analyzed", value=6)
+    agent_name = st.text_input("Nombre Agente", value="Fernando Herboso")
+    uploaded_file = st.file_uploader("Sube CSV MLS", type=["csv"])
+    months_analyzed = st.number_input("Meses Analizados", value=6)
 
-st.title("🧠 Rick's Strategic Brain (Full AI)")
-st.markdown("### Market Analysis + AVM Triangulation")
+st.title("🧠 Listing Powerhouse AI (Rick Mode)")
+st.info("💡 TIP: En dirección, escribe solo 'Número + Calle' (ej: 9012 Goshen) para mejor coincidencia.")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    address = st.text_input("📍 Subject Property Address:", placeholder="e.g. 9012 Goshen Valley")
+    address = st.text_input("📍 Dirección Propiedad Sujeto:", placeholder="Ej: 9012 Goshen")
 
-if st.button("🚀 Analyze & Propose Price"):
+if st.button("🚀 Generar Estrategia"):
     if not api_key or not address or not uploaded_file:
-        st.error("Missing Data.")
+        st.error("⚠️ Faltan datos (Key, Dirección o CSV).")
     else:
-        # 1. Market Stats (The "Ground Truth")
+        # 1. ANALIZAR DATOS INTERNOS
         df = pd.read_csv(uploaded_file)
-        metrics = calculate_metrics(df, months_analyzed)
+        metrics = calculate_metrics(df, months_analyzed, address)
         
-        if isinstance(metrics, str):
+        if isinstance(metrics, str): # Freno de seguridad
             st.error(metrics)
             st.stop()
+            
+        if metrics['subject_price_found'] != "N/A":
+            st.success(f"✅ ¡Encontrada en CSV! Precio Listado: {metrics['subject_price_found']}")
+        else:
+            st.warning("⚠️ No encontrada en CSV (usaremos IA para estimar precio).")
 
-        # 2. Web Search (The "Public Opinion")
-        with st.spinner('🌍 Searching Zillow/Redfin for AVM data...'):
+        # 2. ANALIZAR DATOS EXTERNOS
+        with st.spinner('🌍 Consultando Zillow/Redfin...'):
             web_raw_data = get_web_estimates(address)
 
-        # 3. Knowledge Base (The "Doctrine")
+        # 3. LEER DOCTRINA
         kb_text = load_knowledge_base()
 
-        # 4. PROMPT: THE BRAIN OF RICK
+        # 4. CEREBRO IA (TRIANGULACIÓN)
         prompt = f"""
-        ACT AS: Real Estate Strategist 'Rick' for agent {agent_name}.
+        ACT AS: Real Estate Analyst 'Rick' for {agent_name}.
         DATE: {date.today().strftime('%B %d, %Y')}
-        TARGET PROPERTY: {address}
+        TARGET: {address}
         
-        === SOURCE 1: MARKET HARD DATA (CSV) ===
-        - Market Speed (MOI): {metrics['months_inventory']} Months
-        - Success Probability: {metrics['success_ratio']}%
-        - Neighborhood Avg Price: {metrics['avg_sold_price']}
-        
-        === SOURCE 2: ONLINE AVM DATA (WEB) ===
-        {web_raw_data}
-        
-        === SOURCE 3: INTERNAL DOCTRINE (PDFs) ===
-        (Refer to 'The Buyer Profiler' and 'AVM Interpretation Guide' logic in your memory)
-        {kb_text[:20000]}
-        
+        === DATA TRIANGULATION ===
+        1. INTERNAL DATA (CSV):
+           - Subject Property Price (if found): {metrics['subject_price_found']}
+           - Market Speed (MOI): {metrics['months_inventory']} Mo
+           - Success Rate: {metrics['success_ratio']}%
+           - Neighborhood Avg: {metrics['avg_sold_price']}
+           
+        2. EXTERNAL DATA (WEB):
+           {web_raw_data}
+           
+        3. DOCTRINE (KNOWLEDGE BASE):
+           {kb_text[:20000]}
+           
         === MISSION ===
-        You are not just reporting data. You are an EXPERT ANALYST.
-        1. **TRIANGULATE THE PRICE:**
-           - Look at the Zillow/Redfin estimates in Source 2.
-           - Look at the Neighborhood Avg in Source 1.
-           - Apply the "AVM Interpretation Guide" logic: If the MOI is {metrics['months_inventory']}, are Zestimates likely high or low?
-           - **DETERMINE A "SWEET SPOT" PRICE.** (e.g., if Zillow says 950k but Avg is 900k and market is slowing, propose 925k).
+        Determine the Strategy & Price.
         
-        2. **WRITE THE STRATEGY:**
-           - **The AVM Shield:** Acknowledge what Zillow says, but use the "AVM Interpretation Guide" to explain why your proposed price is better.
-           - **Buyer Profile:** Based on "The Buyer Profiler", who is the target buyer for this price point?
-           - **Success Math:** Explain the {metrics['success_ratio']}% success rate.
-        
-        === OUTPUT FORMAT ===
-        Start your response with a dedicated line: "RECOMMENDED PRICE: $XXX,XXX"
-        Then write the full strategy report.
+        A. PRICING DECISION:
+           - If Subject Price is found in CSV ({metrics['subject_price_found']}), THAT IS YOUR ANCHOR. Validate it.
+           - If not found, use Web Data + Neighborhood Avg to propose a "Sweet Spot".
+           - Use the MOI ({metrics['months_inventory']}) to justify urgency.
+           
+        B. REPORT GENERATION:
+           - Write the "Strategic Listing Plan".
+           - Include the "AVM Shield" script (Zillow vs Reality).
+           - Explain the "Success Ratio" (Failure risk).
+           
+        FORMAT: Start with "RECOMMENDED PRICE: $XXX,XXX" on the first line.
         """
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
         
-        with st.spinner('Triangulating data sources...'):
+        with st.spinner('🤖 Rick está pensando...'):
             try:
-                # A. Generate Strategy
+                # Generar
                 response = model.generate_content(prompt)
                 report_text = response.text
                 
-                # B. Extract the AI's Recommended Price using Regex
-                # We look for the pattern "RECOMMENDED PRICE: $..."
+                # Extraer Precio Recomendado
                 match = re.search(r"RECOMMENDED PRICE:\s*(\$[\d,]+)", report_text)
-                ai_price = match.group(1) if match else "See Report"
+                ai_price = match.group(1) if match else metrics['subject_price_found']
                 
-                # C. Summary of Web Data for PDF
-                web_summary = model.generate_content(f"Summarize the online price estimates found here in 1 sentence: {web_raw_data}").text
+                # Resumen Web
+                web_sum = model.generate_content(f"Summarize web prices in 1 sentence: {web_raw_data}").text
                 
-                # Display Results
-                st.success(f"✅ Analysis Complete. Rick recommends: {ai_price}")
-                
+                # Mostrar
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Rick's Price", ai_price, "AI Generated")
-                m2.metric("Success Ratio", f"{metrics['success_ratio']}%")
-                m3.metric("Inventory", f"{metrics['months_inventory']} Mo")
+                m1.metric("Precio Objetivo", ai_price)
+                m2.metric("Probabilidad Éxito", f"{metrics['success_ratio']}%")
+                m3.metric("Inventario", f"{metrics['months_inventory']} Meses")
                 
                 st.markdown(report_text)
                 
-                # PDF Generation
-                pdf_bytes = create_pdf(report_text, agent_name, address, metrics, web_summary, ai_price)
-                st.download_button("📥 Download Rick's Report", pdf_bytes, f"Rick_Strategy_{address}.pdf", "application/pdf")
+                # PDF
+                pdf_bytes = create_pdf(report_text, agent_name, address, metrics, web_sum, ai_price)
+                st.download_button("📥 Descargar Reporte PDF", pdf_bytes, f"Rick_Strategy_{address}.pdf", "application/pdf")
                 
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error IA: {e}")
