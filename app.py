@@ -168,10 +168,16 @@ if st.button("🚀 Analyze Market & Internet"):
         # 1. LIVE INTERNET SEARCH
         with st.spinner('🌍 Searching Zillow, Redfin, and Realtor.com...'):
             web_raw_data = get_web_estimates(address)
-            
-        # 2. READ CSV
+       # 2. READ CSV
         df = pd.read_csv(uploaded_file)
         metrics = calculate_metrics(df, months_analyzed)
+
+        # --- BLOQUE DE SEGURIDAD (AÑADIR ESTO) ---
+        if isinstance(metrics, str):
+            st.error(f"❌ Error en el CSV: {metrics}")
+            st.warning("Consejo: Abre tu CSV y asegúrate de que haya una columna llamada 'Status', 'Estado' o 'Current Status'.")
+            st.stop() # <--- ESTO DETIENE EL PROGRAMA ANTES DE QUE FALLE
+        # -----------------------------------------
 
         # 3. LOAD KNOWLEDGE
         kb_text = load_knowledge_base()
@@ -240,5 +246,6 @@ if st.button("🚀 Analyze Market & Internet"):
                 st.error(f"Error: {e}")
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
 
