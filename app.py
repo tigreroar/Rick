@@ -199,13 +199,15 @@ def calculate_metrics(df, months=6, address_query=""):
 
 # --- 5. INTERFAZ ---
 with st.sidebar:
-    st.header("⚙️ Control Panel")
-    env_key = os.getenv("GOOGLE_API_KEY")
-    api_key = env_key if env_key else st.text_input("Gemini API Key", type="password")
+    st.header("⚙️ Settings")
+    # Busca la llave en el sistema (Railway), si no existe, la pide manual
+    env_maps_key = os.getenv("MAPS_API_KEY")
     
-    st.divider()
-    st.info("📸 Visual Intelligence")
-    maps_key = st.text_input("Google Maps Key (Optional)", type="password")
+    if env_maps_key:
+        maps_key = env_maps_key
+        st.success("📸 Maps API: Linked Automatically")
+    else:
+        maps_key = st.text_input("Google Maps Static Key", type="password")
     
     st.divider()
     agent_name = st.text_input("Agent Name", value="Fernando Herboso")
@@ -308,3 +310,4 @@ if st.button("🚀 Execute Strategic Plan"):
                 
             except Exception as e:
                 st.error(f"Execution Error: {e}")
+
