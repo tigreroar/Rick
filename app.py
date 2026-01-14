@@ -13,21 +13,19 @@ st.set_page_config(page_title="Listing Powerhouse AI (Rick Mode)", page_icon="�
 # --- 1. INTERNET SEARCH (IMPROVED) ---
 def get_web_estimates(address):
     """Searches specifically for Zestimates to avoid 'No data found'."""
-    # We ask specifically for 'price' and 'zestimate'
-    search_query = f"{address} zillow redfin price estimate"
+    search_query = f"{address} price estimate zillow redfin realtor"
     results_text = ""
     try:
-        # backend='api' sometimes works better for bots
         with DDGS() as ddgs:
             results = list(ddgs.text(search_query, max_results=5))
             for r in results:
                 results_text += f"- Source: {r['title']}\n  Snippet: {r['body']}\n\n"
         
         if not results_text:
-            return "WARNING: Automated search was blocked or empty. Assume Zillow has data but we couldn't fetch it."
+            return "WARNING: Automated search blocked. Assume Zestimate is likely higher than market value."
         return results_text
     except Exception as e:
-        return f"Search Error (Likely IP Blocked): {e}"
+        return f"Search Error: {e}"
 
 # --- 2. PDF GENERATION ---
 class PDFReport(FPDF):
@@ -59,7 +57,7 @@ def create_pdf(content, agent_name, address, metrics, web_summary):
     pdf.cell(0, 10, f"{address}", 0, 1, 'C')
     pdf.ln(10)
     pdf.set_font('Arial', 'I', 12)
-    pdf.cell(0, 10, f"Date: {date.today().strftime('%B %d, %Y')}", 0, 1, 'C') # FECHA REAL
+    pdf.cell(0, 10, f"Date: {date.today().strftime('%B %d, %Y')}", 0, 1, 'C')
     pdf.ln(10)
     pdf.set_font('Arial', 'I', 14)
     pdf.cell(0, 10, f"Prepared by: {agent_name}", 0, 1, 'C')
@@ -72,9 +70,13 @@ def create_pdf(content, agent_name, address, metrics, web_summary):
     if isinstance(metrics, dict):
         pdf.cell(0, 10, f"Absorption Rate (MOI): {metrics['months_inventory']} Months", 0, 1)
         pdf.cell(0, 10, f"Success Probability: {metrics['success_ratio']}%", 0, 1)
-        # Mostramos el precio del sujeto si existe, si no el promedio
+        
+        # LOGICA RICK: Mostrar el precio ESPECIFICO si existe
         if metrics.get('subject_price') and metrics['subject_price'] != "N/A":
-             pdf.cell(0, 10, f"Subject Property List Price (CSV): {metrics['subject_price']}", 0, 1)
+             pdf.set_font('Arial', 'B', 11)
+             pdf.cell(0, 10, f"TARGET LIST PRICE (Sweet Spot): {metrics['subject_price']}", 0, 1)
+             pdf.set_font('Arial', '', 11)
+             pdf.cell(0, 10, f"(Neighborhood Avg: {metrics['avg_sold_price']})", 0, 1)
         else:
              pdf.cell(0, 10, f"Avg Neighborhood Price: {metrics['avg_sold_price']}", 0, 1)
     
@@ -103,7 +105,7 @@ def create_pdf(content, agent_name, address, metrics, web_summary):
             
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. DATA LOGIC (RICK'S LOGIC) ---
+# --- 3. DATA LOGIC (SMART SEARCH FIX) ---
 def load_knowledge_base():
     text = ""
     path = "knowledge_base"
@@ -123,8 +125,8 @@ def load_knowledge_base():
 
 def calculate_metrics(df, months=6, subject_address=""):
     """
-    Calculates metrics AND searches for the subject property in the CSV
-    to find the REAL target price (e.g., $870k) instead of the average ($1M).
+    Calculates metrics and INTELLIGENTLY finds the subject property 
+    by combining StreetNumber + StreetName columns.
     """
     try:
         df.columns = [c.lower().strip() for c in df.columns]
@@ -137,12 +139,23 @@ def calculate_metrics(df, months=6, subject_address=""):
         possible_price_cols = [c for c in df.columns if ('price' in c or 'list' in c or 'sold' in c) and not any(x in c for x in excluded_words)]
         price_col = next((c for c in possible_price_cols if 'sold' in c or 'closed' in c), possible_price_cols[0] if possible_price_cols else None)
         
-        # 2. Find Subject Property Price (The "Rick" Fix)
+        # 2. SMART FIND SUBJECT PROPERTY (THE FIX)
         subject_price_found = "N/A"
-        if subject_address:
-            # Simple fuzzy search: check if address part exists in any column
-            # We assume user inputs "123 Main". We look for that string in the dataframe.
-            mask = df.apply(lambda row: row.astype(str).str.contains(subject_address, case=False).any(), axis=1)
+        
+        # Check if we have split address columns (StreetNumber, StreetName)
+        st_num_col = next((c for c in df.columns if 'streetnumber' in c or 'stnum' in c), None)
+        st_name_col = next((c for c in df.columns if 'streetname' in c or 'stname' in c), None)
+        
+        if subject_address and st_num_col and st_name_col:
+            # Create a temporary 'FullAddress' column for searching
+            df['temp_full_address'] = df[st_num_col].astype(str) + " " + df[st_name_col].astype(str)
+            
+            # Extract just the street part from user input (e.g., "9012 Goshen" from "9012 Goshen Valley Dr...")
+            # We assume the first few words are the most important
+            search_term = " ".join(subject_address.split()[:2]) # "9012 Goshen"
+            
+            # Find match
+            mask = df['temp_full_address'].str.contains(search_term, case=False, na=False)
             subject_row = df[mask]
             
             if not subject_row.empty and price_col:
@@ -154,7 +167,6 @@ def calculate_metrics(df, months=6, subject_address=""):
         status_series = df[status_col].astype(str)
         sold = df[status_series.str.contains('sold|closed', case=False, na=False)].shape[0]
         active = df[status_series.str.contains('active|avail', case=False, na=False)].shape[0]
-        # Rick's Formula: Expired + Withdrawn + Canceled
         failed = df[status_series.str.contains('exp|with|canc|term', case=False, na=False)].shape[0]
         
         sales_pm = sold / months
@@ -173,7 +185,7 @@ def calculate_metrics(df, months=6, subject_address=""):
             "success_ratio": round(success, 1),
             "avg_sold_price": f"${avg_price:,.0f}" if avg_price > 0 else "N/A",
             "failed": failed,
-            "subject_price": subject_price_found # This is the Key for Rick's accuracy
+            "subject_price": subject_price_found 
         }
     except Exception as e:
         return f"Calc Error: {str(e)}"
@@ -189,25 +201,30 @@ with st.sidebar:
     months_analyzed = st.number_input("Months Analyzed", value=6)
 
 st.title("🏠 Listing Powerhouse AI")
-st.markdown("### The 'Rick' Logic Generator")
+st.markdown("### Strategic Real Estate Analyst")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    # Important: User must type the address part that matches the CSV (e.g. "9012" or "Goshen")
-    address = st.text_input("📍 Subject Property Address (Matches CSV):", placeholder="e.g. 123 Main St")
+    # Instruction for better matching
+    address = st.text_input("📍 Subject Property Address:", placeholder="e.g. 9012 Goshen Valley")
 
 if st.button("🚀 Run Analysis"):
     if not api_key or not address or not uploaded_file:
         st.error("Missing Data.")
     else:
-        # 1. Process CSV & Find Subject Price
+        # 1. Process CSV
         df = pd.read_csv(uploaded_file)
-        # Pass address to find the specific $870k price
         metrics = calculate_metrics(df, months_analyzed, address)
         
         if isinstance(metrics, str):
             st.error(metrics)
             st.stop()
+            
+        # Check if Subject Price was found
+        if metrics['subject_price'] == "N/A":
+             st.warning(f"⚠️ Could not find '{address}' in the CSV. Using Neighborhood Average (${metrics['avg_sold_price']}). Try typing just the street number and name (e.g., '9012 Goshen').")
+        else:
+             st.success(f"✅ FOUND Subject Property in CSV! Target Price: {metrics['subject_price']}")
 
         # 2. Web Search
         with st.spinner('🌍 Searching Zillow/Redfin...'):
@@ -216,41 +233,43 @@ if st.button("🚀 Run Analysis"):
         # 3. Knowledge
         kb_text = load_knowledge_base()
 
-        # 4. PROMPT (The "Rick" Persona)
+        # 4. PROMPT (RICK PERSONA)
         prompt = f"""
-        ACT AS: Real Estate Analyst 'Rick' for agent {agent_name}.
+        ACT AS: Real Estate Analyst 'Rick'.
         DATE: {date.today().strftime('%B %d, %Y')}
         TARGET PROPERTY: {address}
         
         === DATA INTELLIGENCE ===
         1. MARKET REALITY (CSV):
-           - MOI: {metrics['months_inventory']} Months (Speed of market)
-           - Success Ratio: {metrics['success_ratio']}% (Prob of selling)
-           - Failed Listings: {metrics['failed']} (Risk)
+           - MOI: {metrics['months_inventory']} Months
+           - Success Ratio: {metrics['success_ratio']}%
+           - Failed Listings: {metrics['failed']}
            
-        2. PRICING ANCHOR:
-           - Subject Property Current/List Price in CSV: {metrics['subject_price']}
+        2. PRICING ANCHOR (CRITICAL):
+           - Subject Property List Price (from CSV): {metrics['subject_price']}
            - Neighborhood Avg: {metrics['avg_sold_price']}
-           (CRITICAL: If the 'Subject Property Price' is found (e.g. $870k), use THAT as the target 'Sweet Spot'. Do NOT use the neighborhood average if it's way higher.)
-
-        3. ONLINE "NOISE" (Web Search):
+           
+           INSTRUCTION: If 'Subject Property List Price' is available (e.g. $870k), YOU MUST USE IT as the "Agent's Sweet Spot" or "Target Price". 
+           Ignore the Neighborhood Avg ($1M+) as it is misleading.
+           
+        3. ONLINE ESTIMATES (Web Search):
            {web_raw_data}
-           (Instruction: If you see Zestimates higher than the Subject Price, label them as "Algo-Noise" and use the Zillow CEO script. If web search failed, admit it but assume Zillow is likely inaccurate.)
+           INSTRUCTION: If Zillow/Redfin show prices HIGHER than the CSV List Price ({metrics['subject_price']}), label them as "Inflated Algorithms".
+           Use the CEO of Zillow script to discredit them.
 
         === KNOWLEDGE BASE ===
         {kb_text[:15000]}
         
         === TASK ===
         Write a Strategic Report.
-        - **Pricing:** Validate the price of {metrics['subject_price']} (if available) as the "Sweet Spot". Explain why $1M (Avg) is wrong if the subject is $870k.
-        - **Success:** Explain that {metrics['success_ratio']}% means ~3 out of 10 homes FAIL.
-        - **Date:** Use today's date.
+        - **Pricing Section:** Explicitly state the Agent's Recommended Price is {metrics['subject_price']} (if found). Explain why.
+        - **AVM Critique:** Compare the {metrics['subject_price']} vs Zillow's numbers.
         """
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
         
-        with st.spinner('Thinking like Rick...'):
+        with st.spinner('Calculating Strategy...'):
             try:
                 response = model.generate_content(prompt)
                 report_text = response.text
@@ -259,7 +278,7 @@ if st.button("🚀 Run Analysis"):
                 
                 # Display
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Target Price (CSV)", metrics['subject_price'])
+                m1.metric("Target Price (Rick's Pick)", metrics['subject_price'])
                 m2.metric("Success Ratio", f"{metrics['success_ratio']}%")
                 m3.metric("Inventory", f"{metrics['months_inventory']} Mo")
                 
@@ -270,4 +289,5 @@ if st.button("🚀 Run Analysis"):
                 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
