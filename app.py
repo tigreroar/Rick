@@ -138,7 +138,7 @@ if st.button("🚀 Generate Strategy"):
         # 4. Generate
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.0-flash')
             
             with st.spinner('Consulting Gemini...'):
                 response = model.generate_content(SYSTEM_PROMPT)
@@ -153,3 +153,4 @@ if st.button("🚀 Generate Strategy"):
         except Exception as e:
             st.error(f"❌ Connection Error: {e}")
             st.info("Suggestion: Check that your API Key in Railway is correct and has no extra spaces.")
+
