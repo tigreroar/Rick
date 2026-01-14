@@ -47,12 +47,12 @@ class PDFReport(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 10)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 10, 'CONFIDENTIAL STRATEGIC ANALYSIS | LISTING POWERHOUSE', 0, 1, 'R')
+        self.cell(0, 10, 'CONFIDENTIAL STRATEGIC ANALYSIS | Powered by Agent Coach AI', 0, 1, 'R')
         self.ln(5)
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Listing Powerhouse AI | Generated: {date.today()}', 0, 0, 'C')
+        self.cell(0, 10, f'Powered by Agent Coach AI | Generated: {date.today()}', 0, 0, 'C')
     def chapter_title(self, title):
         self.set_font('Arial', 'B', 14)
         self.set_fill_color(33, 47, 61)
@@ -240,5 +240,6 @@ if st.button("🚀 Execute Strategic Plan"):
             st.download_button("📥 Download Strategic Plan (PDF)", pdf_bytes, f"Strategy_{address}.pdf", "application/pdf")
         except Exception as e:
             st.error(f"Error: {e}")
+
 
 
