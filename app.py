@@ -10,7 +10,7 @@ import re
 import requests
 
 # --- CONFIGURACIÓN DE ALTO NIVEL ---
-st.set_page_config(page_title="Listing Powerhouse AI", page_icon="🦅", layout="wide")
+st.set_page_config(page_title=""Rick" The Property Analyzer", layout="wide")
 
 # --- 1. VISUAL INTELLIGENCE (AUTOMÁTICA) ---
 def get_street_view_image(address, api_key):
@@ -240,4 +240,5 @@ if st.button("🚀 Execute Strategic Plan"):
             st.download_button("📥 Download Strategic Plan (PDF)", pdf_bytes, f"Strategy_{address}.pdf", "application/pdf")
         except Exception as e:
             st.error(f"Error: {e}")
+
 
