@@ -11,20 +11,33 @@ import re
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Listing Powerhouse AI (Final Rick)", page_icon="🧠", layout="wide")
 
-# --- 1. BUSCADOR WEB (Backends Rotativos para evitar bloqueos) ---
+# --- 1. BUSCADOR WEB (CON FILTRO DE SEGURIDAD ANTI-BASURA) ---
 def get_web_estimates(address):
-    """Intenta buscar Zestimates rotando servidores para evitar bloqueos."""
+    """
+    Busca Zestimates y FILTRA resultados que no sean de Real Estate.
+    Esto evita que salgan noticias de cine, historia, etc.
+    """
     search_query = f"{address} price estimate zillow redfin"
     results_text = ""
     try:
-        # Intentamos primero con el backend 'api' que es más permisivo
+        # Intentamos primero con el backend 'api' que es más rápido
         with DDGS() as ddgs:
-            results = list(ddgs.text(search_query, max_results=4, backend='api'))
+            results = list(ddgs.text(search_query, max_results=5, backend='api'))
+            
+            # PALABRAS CLAVE OBLIGATORIAS (El filtro de seguridad)
+            valid_keywords = ['price', 'sold', 'estimate', 'value', 'market', 'zestimate', 'list', 'real estate', 'realtor', 'redfin']
+            
             for r in results:
-                results_text += f"SOURCE: {r['title']}\nDATA: {r['body']}\n\n"
+                # Convertimos a minúsculas para verificar
+                body_lower = r['body'].lower()
+                title_lower = r['title'].lower()
+                
+                # Solo guardamos el resultado si habla de precios o casas
+                if any(k in body_lower for k in valid_keywords) or any(k in title_lower for k in valid_keywords):
+                    results_text += f"SOURCE: {r['title']}\nDATA: {r['body']}\n\n"
         
         if not results_text:
-            return "WARNING: Web search blocked. Use the 'AVM Shield' script generically."
+            return "WARNING: Web search blocked or irrelevant. (Using generic AVM Shield script)."
         return results_text
     except:
         return "WARNING: Web search blocked. Use the 'AVM Shield' script generically."
@@ -87,6 +100,8 @@ def create_pdf(content, agent_name, address, metrics, web_summary, ai_price):
     # SECCIÓN 2: AVM Critique
     pdf.chapter_title("2. AVM Critique (The Price Shield)")
     pdf.set_font('Arial', '', 10)
+    
+    # Limpieza de caracteres latinos para PDF
     clean_web = web_summary.encode('latin-1', 'replace').decode('latin-1')
     pdf.multi_cell(0, 6, clean_web)
     pdf.ln(5)
@@ -218,7 +233,7 @@ if st.button("🚀 Generar Estrategia Rick"):
         else:
             st.warning("⚠️ No se encontró la propiedad exacta en el CSV. Se usarán estimaciones.")
 
-        # 2. WEB SEARCH
+        # 2. WEB SEARCH (CON FILTRO)
         with st.spinner('🌍 Triangulando AVMs...'):
             web_raw_data = get_web_estimates(address)
 
@@ -264,6 +279,9 @@ if st.button("🚀 Generar Estrategia Rick"):
                 # Extraer precio para el Dashboard
                 ai_price = metrics['subject_price_found'] if metrics['subject_price_found'] != "N/A" else "See Report"
                 
+                # Resumen Web para PDF (Nuevo Prompt para limpiar)
+                web_sum = model.generate_content(f"Summarize these real estate prices in 1 sentence (Ignore any irrelevant news): {web_raw_data}").text
+                
                 # Mostrar
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Sweet Spot (Rick)", ai_price)
@@ -273,8 +291,9 @@ if st.button("🚀 Generar Estrategia Rick"):
                 st.markdown(report_text)
                 
                 # PDF
-                pdf_bytes = create_pdf(report_text, agent_name, address, metrics, web_raw_data, ai_price)
+                pdf_bytes = create_pdf(report_text, agent_name, address, metrics, web_sum, ai_price)
                 st.download_button("📥 Descargar Reporte Rick", pdf_bytes, f"Rick_Strategy_{address}.pdf", "application/pdf")
                 
             except Exception as e:
                 st.error(f"Error: {e}")
+
