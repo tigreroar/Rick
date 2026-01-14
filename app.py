@@ -128,7 +128,7 @@ if st.button("🚀 Generar Estrategia"):
 
         # 4. Llamar a Gemini
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         with st.spinner('Analizando archivos internos y mercado...'):
             response = model.generate_content(SYSTEM_PROMPT)
@@ -139,4 +139,5 @@ if st.button("🚀 Generar Estrategia"):
             c1.metric("Success Ratio", f"{metrics_display['success_ratio']}%")
             c2.metric("Meses Inventario", f"{metrics_display['months_inventory']}")
             
+
         st.markdown(response.text)
