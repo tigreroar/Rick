@@ -253,7 +253,7 @@ if st.button("🚀 Run Analysis"):
 
         # STEP 5: Generate with Gemini
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         with st.spinner('🤖 Analyzing data & writing report...'):
             try:
@@ -288,3 +288,4 @@ if st.button("🚀 Run Analysis"):
                 
             except Exception as e:
                 st.error(f"AI/Connection Error: {e}")
+
