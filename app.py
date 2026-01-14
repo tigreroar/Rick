@@ -169,22 +169,22 @@ with st.sidebar:
     if not api_key:
         api_key = st.text_input("Gemini API Key", type="password")
     else:
-        st.success("🤖 AI Engine: Connected")
+       
         
     if not maps_key:
         maps_key = st.text_input("Google Maps Static Key", type="password")
     else:
-        st.success("📸 Maps API: Connected")
+       
 
     st.divider()
     agent_name = st.text_input("Agent Name", value="Fernando Herboso")
     uploaded_file = st.file_uploader("Upload MLS CSV", type=["csv"])
     months_analyzed = st.number_input("Months Analyzed", value=6)
 
-st.title("🦅 Listing Powerhouse AI")
-st.markdown("**Role:** Senior Strategic Analyst")
+st.title("Rick" The Property Analyzer")
+st.markdown("Powered by Agent Coach AI")
 
-address = st.text_input("📍 Property Address:", placeholder="e.g. 9012 Goshen")
+address = st.text_input("📍 Property Address:", placeholder="e.g. 4339 Birchlake Ct, Alexandria, VA 22309")
 
 if st.button("🚀 Execute Strategic Plan"):
     if not api_key or not address or not uploaded_file:
@@ -240,3 +240,4 @@ if st.button("🚀 Execute Strategic Plan"):
             st.download_button("📥 Download Strategic Plan (PDF)", pdf_bytes, f"Strategy_{address}.pdf", "application/pdf")
         except Exception as e:
             st.error(f"Error: {e}")
+
