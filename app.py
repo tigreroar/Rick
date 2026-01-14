@@ -2,51 +2,62 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import os
-from pypdf import PdfReader # Necesario para leer PDFs
+import pdfplumber
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURATION ---
 st.set_page_config(page_title="Listing Powerhouse AI", page_icon="🏠", layout="wide")
 
-# --- FUNCIÓN 1: CARGAR CONOCIMIENTO (ARCHIVOS FIJOS) ---
+# --- FUNCTION 1: LOAD KNOWLEDGE BASE (WITH PDFPLUMBER) ---
 def load_knowledge_base():
-    """Lee todos los archivos de la carpeta 'conocimiento' y devuelve su texto."""
+    """Reads files using pdfplumber to avoid 'bbox' errors."""
     knowledge_text = ""
-    folder_path = "conocimiento"
+    folder_path = "knowledge_base"  # <--- RENAME YOUR FOLDER TO THIS
     
-    # Verificar si la carpeta existe
     if not os.path.exists(folder_path):
-        return "ADVERTENCIA: No se encontró la carpeta 'conocimiento'."
+        return "⚠️ WARNING: The 'knowledge_base' folder does not exist."
 
-    # Recorrer archivos
+    files_found = 0
+    errors = []
+
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
         
         try:
-            # Si es PDF
-            if filename.endswith('.pdf'):
-                reader = PdfReader(file_path)
-                text = ""
-                for page in reader.pages:
-                    text += page.extract_text() + "\n"
-                knowledge_text += f"\n--- CONTENIDO DEL ARCHIVO: {filename} ---\n{text}\n"
+            # IMPROVED PDF READING
+            if filename.lower().endswith('.pdf'):
+                with pdfplumber.open(file_path) as pdf:
+                    text = ""
+                    for page in pdf.pages:
+                        extracted = page.extract_text()
+                        if extracted:
+                            text += extracted + "\n"
+                    knowledge_text += f"\n--- DOCUMENT: {filename} ---\n{text}\n"
+                    files_found += 1
             
-            # Si es Texto (.txt, .md, .csv)
-            elif filename.endswith(('.txt', '.md', '.csv')):
+            # TEXT/CSV READING
+            elif filename.lower().endswith(('.txt', '.md', '.csv')):
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    knowledge_text += f"\n--- CONTENIDO DEL ARCHIVO: {filename} ---\n{f.read()}\n"
+                    knowledge_text += f"\n--- DOCUMENT: {filename} ---\n{f.read()}\n"
+                    files_found += 1
                     
         except Exception as e:
-            st.warning(f"No se pudo leer {filename}: {e}")
+            errors.append(f"Error reading {filename}: {str(e)}")
             
+    if errors:
+        st.error(f"Read errors: {errors}")
+        
+    if files_found == 0:
+        return "⚠️ No valid files found in /knowledge_base."
+        
     return knowledge_text
 
-# --- FUNCIÓN 2: CÁLCULOS MATEMÁTICOS (TU CSV) ---
+# --- FUNCTION 2: MATH CALCULATIONS ---
 def calculate_metrics(df):
     try:
         df.columns = [c.lower().strip() for c in df.columns]
         status_col = next((col for col in df.columns if 'status' in col), None)
         
-        if not status_col: return "Error: Columna 'Status' no encontrada."
+        if not status_col: return "Error: 'Status' column not found in CSV."
 
         sold = df[df[status_col].str.contains('sold|closed', case=False, na=False)].shape[0]
         expired = df[df[status_col].str.contains('expired', case=False, na=False)].shape[0]
@@ -66,78 +77,79 @@ def calculate_metrics(df):
             "months_inventory": round(months_inventory, 1)
         }
     except Exception as e:
-        return f"Error cálculo: {e}"
+        return f"Calculation Error: {e}"
 
-# --- BARRA LATERAL ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.header("⚙️ Configuración")
+    st.header("⚙️ Settings")
+    
+    # API KEY VERIFICATION
     env_api_key = os.getenv("GOOGLE_API_KEY")
-    api_key = env_api_key if env_api_key else st.text_input("API Key", type="password")
-    
-    st.divider()
-    st.subheader("📂 Market Data (Variable)")
-    uploaded_file = st.file_uploader("Sube CSV del MLS hoy", type=["csv"])
-    
-    st.divider()
-    st.info("ℹ️ Los manuales y guías se cargan automáticamente desde la carpeta /conocimiento.")
-
-# --- INTERFAZ PRINCIPAL ---
-st.title("🏠 Listing Powerhouse AI")
-address = st.text_input("📍 Dirección de la Propiedad:")
-
-if st.button("🚀 Generar Estrategia"):
-    if not api_key or not address:
-        st.warning("Faltan datos.")
+    if env_api_key:
+        st.success(f"✅ API Key Detected (ends in ...{env_api_key[-4:]})")
+        api_key = env_api_key
     else:
-        # 1. Cargar Conocimiento Estático (Tus archivos PDF/TXT)
-        base_knowledge = load_knowledge_base()
+        st.warning("⚠️ GOOGLE_API_KEY environment variable not detected")
+        api_key = st.text_input("Paste your manual API Key here:", type="password")
+    
+    st.divider()
+    uploaded_file = st.file_uploader("Upload MLS CSV (Optional)", type=["csv"])
+
+# --- MAIN INTERFACE ---
+st.title("🏠 Listing Powerhouse AI")
+address = st.text_input("📍 Property Address:")
+
+if st.button("🚀 Generate Strategy"):
+    if not api_key:
+        st.error("❌ STOP! I need the API Key to work. Configure it in Railway or paste it on the left.")
+    elif not address:
+        st.warning("Please enter an address.")
+    else:
+        # 1. Load Files
+        with st.spinner('Reading internal manuals (PDFs)...'):
+            base_knowledge = load_knowledge_base()
         
-        # 2. Cargar Datos del Mercado (CSV subido hoy)
-        metrics_text = "No CSV uploaded."
+        # 2. Process CSV
+        metrics_text = "No CSV uploaded. Using generic assumptions."
         metrics_display = None
         if uploaded_file:
             df = pd.read_csv(uploaded_file)
             metrics = calculate_metrics(df)
             if isinstance(metrics, dict):
-                metrics_text = f"""MARKET METRICS:
-                - Sold: {metrics['sold']}
-                - Active: {metrics['active']}
-                - Failed (Exp/With): {metrics['expired'] + metrics['withdrawn']}
-                - SUCCESS RATIO: {metrics['success_ratio']}%
-                - MONTHS INVENTORY: {metrics['months_inventory']}"""
+                metrics_text = str(metrics)
                 metrics_display = metrics
 
-        # 3. Construir el Prompt Maestro
+        # 3. Prompt
         SYSTEM_PROMPT = f"""
-        You are the Listing Powerhouse AI for Fernando Herboso.
+        You are the Listing Powerhouse AI.
         
-        === INTERNAL KNOWLEDGE BASE (REFERENCE DOCS) ===
-        {base_knowledge}
-        ================================================
+        === KNOWLEDGE BASE ===
+        {base_knowledge[:50000]} 
+        (Note: Content truncated if too long to fit context)
         
-        === CURRENT MARKET DATA ===
+        === MARKET DATA ===
         {metrics_text}
         
-        === TASK ===
-        Target Property: {address}
-        Based on the REFERENCE DOCS (especially the slide structures and scripts) and the MARKET DATA:
-        1. Generate the 'INTERNAL_CHEAT_SHEET'.
-        2. Draft the content for 'STRATEGIC_DECK' following the 6-slide structure found in the knowledge base.
-        3. Use the market metrics strictly.
+        === INSTRUCTION ===
+        Create the Strategic Game Plan for property: {address}.
+        Use the Knowledge Base to structure the Slides and Cheat Sheet.
         """
 
-        # 4. Llamar a Gemini
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        
-        with st.spinner('Analizando archivos internos y mercado...'):
-            response = model.generate_content(SYSTEM_PROMPT)
+        # 4. Generate
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-        # 5. Mostrar
-        if metrics_display:
-            c1, c2 = st.columns(2)
-            c1.metric("Success Ratio", f"{metrics_display['success_ratio']}%")
-            c2.metric("Meses Inventario", f"{metrics_display['months_inventory']}")
+            with st.spinner('Consulting Gemini...'):
+                response = model.generate_content(SYSTEM_PROMPT)
+                
+            if metrics_display:
+                c1, c2 = st.columns(2)
+                c1.metric("Success Ratio", f"{metrics_display['success_ratio']}%")
+                c2.metric("Months Inv.", f"{metrics_display['months_inventory']}")
+                
+            st.markdown(response.text)
             
-
-        st.markdown(response.text)
+        except Exception as e:
+            st.error(f"❌ Connection Error: {e}")
+            st.info("Suggestion: Check that your API Key in Railway is correct and has no extra spaces.")
