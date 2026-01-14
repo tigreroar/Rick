@@ -157,24 +157,22 @@ def calculate_metrics(df, months=6, address_query=""):
         }
     except Exception as e: return f"Error: {str(e)}"
 
-# --- 5. INTERFAZ Y LÓGICA DE VARIABLES (FIX DEL NAMEERROR) ---
+# --- 5. INTERFAZ Y LÓGICA DE VARIABLES ---
 
-# Inicialización de seguridad para evitar NameError
 api_key = os.getenv("GOOGLE_API_KEY", "")
 maps_key = os.getenv("MAPS_API_KEY", "")
 
 with st.sidebar:
     st.header("⚙️ Control Panel")
-    # Si no está en Railway, permite entrada manual
     if not api_key:
         api_key = st.text_input("Gemini API Key", type="password")
     else:
-       
+        st.success("🤖 AI Engine: Connected")
         
     if not maps_key:
         maps_key = st.text_input("Google Maps Static Key", type="password")
     else:
-       
+        st.success("📸 Maps API: Linked Automatically")
 
     st.divider()
     agent_name = st.text_input("Agent Name", value="Fernando Herboso")
@@ -190,18 +188,12 @@ if st.button("🚀 Execute Strategic Plan"):
     if not api_key or not address or not uploaded_file:
         st.error("Missing Data: Please ensure API Key, Address, and CSV are provided.")
     else:
-        # Foto
         final_img = get_street_view_image(address, maps_key)
-            
-        # Análisis
         df = pd.read_csv(uploaded_file)
         metrics = calculate_metrics(df, months_analyzed, address)
-        
-        # Web
         with st.spinner('🌍 Analyzing Online AVMs...'):
             web_data = get_web_estimates(address)
 
-        # Cerebro AI
         prompt = f"""
         YOU ARE: The Listing Powerhouse AI. 
         ROLE: Senior Strategic Analyst for {agent_name}.
@@ -240,10 +232,3 @@ if st.button("🚀 Execute Strategic Plan"):
             st.download_button("📥 Download Strategic Plan (PDF)", pdf_bytes, f"Strategy_{address}.pdf", "application/pdf")
         except Exception as e:
             st.error(f"Error: {e}")
-
-
-
-
-
-
-
