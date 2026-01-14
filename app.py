@@ -181,7 +181,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Upload MLS CSV", type=["csv"])
     months_analyzed = st.number_input("Months Analyzed", value=6)
 
-st.title("Rick" The Property Analyzer")
+st.title("Rick: The Property Analyzer")
 st.markdown("Powered by Agent Coach AI")
 
 address = st.text_input("📍 Property Address:", placeholder="e.g. 4339 Birchlake Ct, Alexandria, VA 22309")
@@ -240,6 +240,7 @@ if st.button("🚀 Execute Strategic Plan"):
             st.download_button("📥 Download Strategic Plan (PDF)", pdf_bytes, f"Strategy_{address}.pdf", "application/pdf")
         except Exception as e:
             st.error(f"Error: {e}")
+
 
 
 
